@@ -285,17 +285,31 @@ function callApi(fields) {
       waitingNonce = '';
     }
 
-    function onMessage(event) {
-      // The response must come from the expected iframe window.
-      if (event.source !== $('apiFrame').contentWindow) return;
+    
+function onMessage(event) {
+  let senderHost = '';
 
-      const message = event.data;
+  try {
+    senderHost = new URL(event.origin).hostname;
+  } catch (_) {
+    return;
+  }
 
-      if (!message || message.nonce !== nonce || !message.result) return;
+  const trustedGoogleOrigin =
+    senderHost === 'script.google.com' ||
+    senderHost === 'script.googleusercontent.com' ||
+    senderHost.endsWith('.script.googleusercontent.com');
 
-      cleanup();
-      resolve(message.result);
-    }
+  if (!trustedGoogleOrigin) return;
+
+  const message = event.data;
+
+  if (!message || message.nonce !== nonce || !message.result) return;
+
+  cleanup();
+  resolve(message.result);
+}
+
 
     window.addEventListener('message', onMessage);
 
