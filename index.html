@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SAHASRA 2026 | QR Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px 16px;
+      background: #0b1020;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+    }
+
+    main {
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .brand {
+      color: #e7c675;
+      letter-spacing: 3px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+      font-size: 29px;
+    }
+
+    p { color: #c5cada; }
+
+    .panel {
+      padding: 20px;
+      background: #151c30;
+      border: 1px solid #303952;
+      border-radius: 18px;
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: #e7c675;
+      color: #111827;
+    }
+
+    .secondary {
+      background: #29334c;
+      color: white;
+    }
+
+    #status {
+      margin-top: 16px;
+      padding: 14px;
+      background: #0b1020;
+      border-radius: 10px;
+      overflow-wrap: anywhere;
+    }
+
+    .note {
+      font-size: 13px;
+      line-height: 1.6;
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+<main>
+  <header>
+    <div class="brand">SAHASRA 2026</div>
+    <h1>QR Ticket Scanner</h1>
+    <p>Event Entry Verification</p>
+  </header>
+
+  <section class="panel">
+    <div id="reader"></div>
+
+    <button id="startBtn" class="primary">
+      Start Camera
+    </button>
+
+    <button id="stopBtn" class="secondary">
+      Stop Camera
+    </button>
+
+    <div id="status" role="status" aria-live="polite">
+      Ready. Start the camera to scan a QR code.
+    </div>
+  </section>
+
+  <p class="note">
+    Camera access is required. Allow camera permission
+    when your browser asks. This test page only reads QR
+    codes; it does not verify tickets or record entry.
+  </p>
+</main>
+
+<script>
+  const statusBox = document.getElementById('status');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+
+  let scanner = null;
+  let running = false;
+  let lastScan = '';
+
+  startBtn.addEventListener('click', startCamera);
+  stopBtn.addEventListener('click', stopCamera);
+
+  async function startCamera() {
+    if (running) return;
+
+    try {
+      statusBox.textContent = 'Requesting camera access...';
+
+      scanner = new Html5Qrcode('reader');
+
+      await scanner.start(
+        { facingMode: 'environment' },
+        {
+          fps: 10,
+          qrbox: { width: 230, height: 230 }
+        },
+        (decodedText) => {
+          if (decodedText === lastScan) return;
+
+          lastScan = decodedText;
+          statusBox.textContent =
+            'QR READ SUCCESSFULLY:\n' + decodedText;
+        },
+        () => {}
+      );
+
+      running = true;
+      statusBox.textContent =
+        'Camera started. Point it at a ticket QR code.';
+
+    } catch (error) {
+      statusBox.textContent =
+        'Camera error: ' +
+        (error.message || String(error)) +
+        '\nCheck browser permission and HTTPS access.';
+
+      scanner = null;
+    }
+  }
+
+  async function stopCamera() {
+    if (!scanner || !running) return;
+
+    try {
+      await scanner.stop();
+      scanner.clear();
+      statusBox.textContent = 'Camera stopped.';
+    } catch (error) {
+      statusBox.textContent =
+        'Could not stop camera: ' + error.message;
+    } finally {
+      scanner = null;
+      running = false;
+      lastScan = '';
+    }
+  }
+</script>
+</body>
+</html>
