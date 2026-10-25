@@ -4,7 +4,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SAHASRA 2026 | QR Scanner</title>
+  <meta name="referrer" content="no-referrer">
+  <title>SAHASRA 2026 | Ticket Scanner</title>
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -16,19 +17,13 @@
       min-height: 100vh;
       padding: 24px 16px;
       background: #0b1020;
-      color: #ffffff;
+      color: #fff;
       font-family: Arial, sans-serif;
     }
 
-    main {
-      max-width: 480px;
-      margin: 0 auto;
-    }
+    main { max-width: 480px; margin: auto; }
 
-    header {
-      text-align: center;
-      margin-bottom: 24px;
-    }
+    header { text-align: center; margin-bottom: 24px; }
 
     .brand {
       color: #e7c675;
@@ -37,24 +32,33 @@
       font-weight: bold;
     }
 
-    h1 {
-      margin-bottom: 8px;
-      font-size: 29px;
-    }
+    h1 { font-size: 29px; margin-bottom: 8px; }
 
     p { color: #c5cada; }
 
     .panel {
       padding: 20px;
+      margin-bottom: 16px;
       background: #151c30;
       border: 1px solid #303952;
       border-radius: 18px;
     }
 
-    #reader {
+    label {
+      display: block;
+      margin: 12px 0 7px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input {
       width: 100%;
-      overflow: hidden;
-      border-radius: 12px;
+      padding: 14px;
+      border: 1px solid #344159;
+      border-radius: 10px;
+      background: #0b1020;
+      color: white;
+      font-size: 16px;
     }
 
     button {
@@ -68,29 +72,47 @@
       cursor: pointer;
     }
 
-    .primary {
-      background: #e7c675;
-      color: #111827;
-    }
+    button:disabled { opacity: .5; cursor: wait; }
 
-    .secondary {
-      background: #29334c;
-      color: white;
-    }
+    .primary { background: #e7c675; color: #111827; }
+    .secondary { background: #29334c; color: white; }
+
+    #reader { width: 100%; overflow: hidden; border-radius: 12px; }
 
     #status {
       margin-top: 16px;
       padding: 14px;
-      background: #0b1020;
       border-radius: 10px;
+      background: #0b1020;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    #status.good {
+      background: #103a2c;
+      border: 1px solid #35c98a;
+    }
+
+    #status.bad {
+      background: #421f2a;
+      border: 1px solid #ff7777;
+    }
+
+    .hidden { display: none !important; }
+
+    .muted { font-size: 13px; line-height: 1.6; }
+
+    .ticket-details {
+      margin-top: 12px;
+      line-height: 1.8;
       overflow-wrap: anywhere;
     }
 
-    .note {
-      font-size: 13px;
-      line-height: 1.6;
+    footer {
       text-align: center;
-      margin-top: 20px;
+      color: #8e9ab0;
+      font-size: 12px;
+      padding: 12px;
     }
   </style>
 </head>
@@ -103,95 +125,333 @@
     <p>Event Entry Verification</p>
   </header>
 
-  <section class="panel">
+  <section id="loginPanel" class="panel">
+    <h2>Staff Login</h2>
+    <p class="muted">Sign in with your event admin password.</p>
+
+    <form id="loginForm">
+      <label for="password">Admin Password</label>
+      <input
+        id="password"
+        type="password"
+        autocomplete="current-password"
+        required
+        maxlength="200"
+      >
+      <button id="loginBtn" class="primary" type="submit">
+        Login
+      </button>
+    </form>
+  </section>
+
+  <section id="scannerPanel" class="panel hidden">
+    <h2>Scan Ticket</h2>
+    <p class="muted">Point the rear camera at the ticket QR code.</p>
+
     <div id="reader"></div>
 
-    <button id="startBtn" class="primary">
+    <button id="startBtn" class="primary" type="button">
       Start Camera
     </button>
 
-    <button id="stopBtn" class="secondary">
+    <button id="stopBtn" class="secondary" type="button">
       Stop Camera
     </button>
 
-    <div id="status" role="status" aria-live="polite">
-      Ready. Start the camera to scan a QR code.
-    </div>
+    <button id="nextBtn" class="secondary hidden" type="button">
+      Scan Next Ticket
+    </button>
+
+    <button id="logoutBtn" class="secondary" type="button">
+      Logout
+    </button>
   </section>
 
-  <p class="note">
-    Camera access is required. Allow camera permission
-    when your browser asks. This test page only reads QR
-    codes; it does not verify tickets or record entry.
+  <section class="panel">
+    <h2>Verification Result</h2>
+    <div id="status" role="status" aria-live="polite">
+      Please log in to begin.
+    </div>
+    <div id="ticketDetails" class="ticket-details hidden"></div>
+  </section>
+
+  <p class="muted">
+    Never share your admin password or leave the scanner unlocked.
+    Confirm the result on this screen before allowing entry.
   </p>
+
+  <footer>SAHASRA 2026 • Entry Management</footer>
 </main>
 
+<!-- Cross-origin form response channel -->
+<iframe
+  id="apiFrame"
+  name="apiFrame"
+  title="Secure API response"
+  class="hidden"
+></iframe>
+
 <script>
-  const statusBox = document.getElementById('status');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
+'use strict';
 
-  let scanner = null;
-  let running = false;
-  let lastScan = '';
+const API_URL =
+  'https://script.google.com/macros/s/AKfycbyhhkdDym_mQl610LCZgCZTDOIJHzXMynb5h9pjo5t_QguXZFuiJSfoD-TBcHh18ILI/exec';
 
-  startBtn.addEventListener('click', startCamera);
-  stopBtn.addEventListener('click', stopCamera);
+const EXPECTED_ORIGIN =
+  'https://weragamajs-creator.github.io';
 
-  async function startCamera() {
-    if (running) return;
+const $ = id => document.getElementById(id);
 
-    try {
-      statusBox.textContent = 'Requesting camera access...';
+let adminToken = '';
+let scanner = null;
+let cameraRunning = false;
+let busy = false;
+let waitingNonce = '';
+let requestTimer = null;
+let lastDecoded = '';
 
-      scanner = new Html5Qrcode('reader');
+function setStatus(message, type = '') {
+  $('status').textContent = message;
+  $('status').className = type;
+}
 
-      await scanner.start(
-        { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: { width: 230, height: 230 }
-        },
-        (decodedText) => {
-          if (decodedText === lastScan) return;
+function showDetails(result) {
+  const box = $('ticketDetails');
+  box.replaceChildren();
 
-          lastScan = decodedText;
-          statusBox.textContent =
-            'QR READ SUCCESSFULLY:\n' + decodedText;
-        },
-        () => {}
-      );
+  const fields = [
+    ['Ticket ID', result.ticketId],
+    ['Name', result.name],
+    ['Ticket Type', result.ticketType]
+  ];
 
-      running = true;
-      statusBox.textContent =
-        'Camera started. Point it at a ticket QR code.';
+  fields.forEach(([label, value]) => {
+    if (value === undefined || value === null || value === '') return;
 
-    } catch (error) {
-      statusBox.textContent =
-        'Camera error: ' +
-        (error.message || String(error)) +
-        '\nCheck browser permission and HTTPS access.';
+    const row = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = label + ': ';
+    row.append(strong, document.createTextNode(String(value)));
+    box.appendChild(row);
+  });
 
-      scanner = null;
-    }
+  box.classList.toggle('hidden', box.childElementCount === 0);
+}
+
+function makeNonce() {
+  if (window.crypto && crypto.randomUUID) {
+    return crypto.randomUUID();
   }
 
-  async function stopCamera() {
-    if (!scanner || !running) return;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
 
-    try {
-      await scanner.stop();
-      scanner.clear();
-      statusBox.textContent = 'Camera stopped.';
-    } catch (error) {
-      statusBox.textContent =
-        'Could not stop camera: ' + error.message;
-    } finally {
-      scanner = null;
-      running = false;
-      lastScan = '';
+/*
+ * Send form-encoded POST data to Apps Script.
+ * The response is returned through the hidden iframe's postMessage.
+ */
+function callApi(fields) {
+  return new Promise((resolve, reject) => {
+    if (waitingNonce) {
+      reject(new Error('Another request is already running.'));
+      return;
     }
+
+    const nonce = makeNonce();
+    waitingNonce = nonce;
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = API_URL;
+    form.target = 'apiFrame';
+    form.acceptCharset = 'UTF-8';
+    form.style.display = 'none';
+
+    const allFields = { ...fields, nonce };
+
+    Object.entries(allFields).forEach(([name, value]) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = String(value ?? '');
+      form.appendChild(input);
+    });
+
+    function cleanup() {
+      clearTimeout(requestTimer);
+      window.removeEventListener('message', onMessage);
+      form.remove();
+      waitingNonce = '';
+    }
+
+    function onMessage(event) {
+      // The response must come from the expected iframe window.
+      if (event.source !== $('apiFrame').contentWindow) return;
+
+      const message = event.data;
+
+      if (!message || message.nonce !== nonce || !message.result) return;
+
+      cleanup();
+      resolve(message.result);
+    }
+
+    window.addEventListener('message', onMessage);
+
+    requestTimer = setTimeout(() => {
+      cleanup();
+      reject(new Error(
+        'API response timed out. Check deployment and Apps Script permissions.'
+      ));
+    }, 25000);
+
+    document.body.appendChild(form);
+    form.submit();
+  });
+}
+
+async function login(event) {
+  event.preventDefault();
+
+  if (busy) return;
+  busy = true;
+  $('loginBtn').disabled = true;
+  setStatus('Signing in...');
+
+  try {
+    const password = $('password').value;
+
+    const result = await callApi({
+      action: 'login',
+      password
+    });
+
+    if (!result.success || !result.token) {
+      throw new Error(result.message || 'Login failed.');
+    }
+
+    adminToken = result.token;
+    $('password').value = '';
+    $('loginPanel').classList.add('hidden');
+    $('scannerPanel').classList.remove('hidden');
+
+    setStatus('Login successful. Start the camera when ready.', 'good');
+
+  } catch (error) {
+    setStatus(error.message || 'Login failed.', 'bad');
+  } finally {
+    busy = false;
+    $('loginBtn').disabled = false;
   }
+}
+
+async function startCamera() {
+  if (!adminToken || cameraRunning || busy) return;
+
+  try {
+    setStatus('Requesting camera access...');
+
+    scanner = new Html5Qrcode('reader');
+
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 230, height: 230 } },
+      onQrScanned,
+      () => {}
+    );
+
+    cameraRunning = true;
+    $('nextBtn').classList.add('hidden');
+    setStatus('Camera ready. Scan a ticket QR code.');
+
+  } catch (error) {
+    scanner = null;
+    setStatus('Camera error: ' + (error.message || String(error)), 'bad');
+  }
+}
+
+async function stopCamera() {
+  if (!scanner || !cameraRunning) return;
+
+  try {
+    await scanner.stop();
+    scanner.clear();
+  } catch (error) {
+    console.error('Camera stop error:', error);
+  } finally {
+    scanner = null;
+    cameraRunning = false;
+  }
+}
+
+async function onQrScanned(decodedText) {
+  if (busy || !adminToken || decodedText === lastDecoded) return;
+
+  lastDecoded = decodedText;
+  busy = true;
+
+  await stopCamera();
+
+  $('nextBtn').classList.add('hidden');
+  $('startBtn').disabled = true;
+  $('ticketDetails').classList.add('hidden');
+
+  setStatus('Checking ticket...');
+
+  try {
+    const result = await callApi({
+      action: 'verify',
+      token: adminToken,
+      scannedValue: decodedText
+    });
+
+    if (result.result === 'VALID' && result.success) {
+      setStatus('ENTRY APPROVED', 'good');
+    } else if (result.result === 'ALREADY_USED') {
+      setStatus('ALREADY USED\n' + (result.message || ''), 'bad');
+    } else {
+      setStatus('INVALID TICKET\n' + (result.message || ''), 'bad');
+    }
+
+    showDetails(result);
+
+  } catch (error) {
+    setStatus(
+      'Verification failed: ' + (error.message || String(error)),
+      'bad'
+    );
+  } finally {
+    busy = false;
+    $('startBtn').disabled = false;
+    $('nextBtn').classList.remove('hidden');
+  }
+}
+
+async function scanNext() {
+  lastDecoded = '';
+  $('ticketDetails').classList.add('hidden');
+  setStatus('Ready for the next ticket.');
+  $('nextBtn').classList.add('hidden');
+  await startCamera();
+}
+
+async function logout() {
+  await stopCamera();
+  adminToken = '';
+  lastDecoded = '';
+  $('password').value = '';
+  $('scannerPanel').classList.add('hidden');
+  $('loginPanel').classList.remove('hidden');
+  $('ticketDetails').classList.add('hidden');
+  setStatus('Logged out. Please sign in again.');
+}
+
+$('loginForm').addEventListener('submit', login);
+$('startBtn').addEventListener('click', startCamera);
+$('stopBtn').addEventListener('click', stopCamera);
+$('nextBtn').addEventListener('click', scanNext);
+$('logoutBtn').addEventListener('click', logout);
 </script>
 </body>
 </html>
