@@ -287,6 +287,11 @@ function callApi(fields) {
 
     
 function onMessage(event) {
+  console.log(
+  'MESSAGE RECEIVED:',
+  event.origin,
+  event.data
+);
   let senderHost = '';
 
   try {
